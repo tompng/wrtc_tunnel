@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2019",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "lib": [
+      "ES2019"
+    ],
+    "types": [
+      "node"
+    ],
+    "sourceMap": true,
+    "pretty": true
+  },
+  "compileOnSave": false,
+  "exclude": [
+    "node_modules"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@mapbox/node-pre-gyp": "*",
+    "ts-node": "*",
+    "typescript": "*",
+    "wrtc": "*",
+    "@types/webrtc": "*"
+  }
+}
