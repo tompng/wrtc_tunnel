@@ -16,8 +16,8 @@ export async function createPeerConnection() {
   return peer
 }
 
-export async function createSDPOffer(peer: RTCPeerConnection, channelName: string) {
-  const channel = peer.createDataChannel(channelName);
+export async function createSDPOffer(peer: RTCPeerConnection) {
+  const channel = peer.createDataChannel('data')
   const offerDescription = await peer.createOffer()
   await peer.setLocalDescription(offerDescription)
   const localDescription = await waitPeerICEGather(peer)
