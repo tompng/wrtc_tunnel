@@ -1,22 +1,19 @@
 {
   "compilerOptions": {
     "strict": true,
-    "target": "ES2019",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "esModuleInterop": true,
-    "isolatedModules": true,
+    "sourceMap": true,
+    "downlevelIteration": true,
+    "target": "es6",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
     "lib": [
-      "ES2019"
+      "esnext",
+      "dom"
     ],
     "types": [
       "node"
     ],
-    "sourceMap": true,
-    "pretty": true
-  },
-  "compileOnSave": false,
-  "exclude": [
-    "node_modules"
-  ]
+  }
 }

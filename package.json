@@ -1,9 +1,11 @@
 {
+  "scripts": {
+    "start": "ts-node --files src/main.ts"
+  },
   "dependencies": {
     "@mapbox/node-pre-gyp": "*",
     "ts-node": "*",
     "typescript": "*",
-    "wrtc": "*",
-    "@types/webrtc": "*"
+    "wrtc": "*"
   }
 }
