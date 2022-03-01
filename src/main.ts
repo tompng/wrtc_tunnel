@@ -3,19 +3,10 @@ import { readLine } from './stdin'
 import { ConnectionManager, Connection } from './connection'
 import * as net from 'net'
 import { SocketEx } from './tcp'
+import { readMailbox, sendMailbox } from './mailbox'
 
 function showSDP(sdp: string) {
   console.log('\n\n===SDP_START===\n' + sdp + '\n===SDP_END===\n\n')
-}
-
-async function stdinReadSDP() {
-  const lines = []
-  while(true) {
-    const line = await readLine('> ')
-    if (!line.match(/===SDP_(START|END)===/)) lines.push(line)
-    if (line.match(/===SDP_END===/)) break
-  }
-  return lines.join('\n')
 }
 
 async function passC2S(connection: Connection, socket: SocketEx) {
@@ -46,11 +37,32 @@ async function connect(connection: Connection, socket: SocketEx) {
   })
 }
 
-async function startClient(port: number) {
+const serverName = 'server1'
+
+function randomID(n: number) {
+  return [...new Array(n)].map(() => String.fromCharCode(Math.floor(97 + 26 * Math.random()))).join('')
+}
+
+async function sleep(time: number) {
+  return new Promise(resolve => setTimeout(resolve, time))
+}
+
+async function startClient(serverName: string, port: number) {
   const peer = await createPeerConnection()
   const [channel, offerSDP] = await createSDPOffer(peer)
-  showSDP(offerSDP)
-  const answerSDP = await stdinReadSDP()
+  const id = randomID(8)
+  await sendMailbox(serverName, id + offerSDP)
+  let answerSDP: string | undefined
+  for (let i = 0; i < 30; i++) {
+    await sleep(1000)
+    console.log('...')
+    answerSDP = await readMailbox(id)
+    if (answerSDP) break
+  }
+  if (!answerSDP) {
+    console.log('timed out')
+    return
+  }
   acceptSDPAnswer(peer, answerSDP)
   await waitPeerConnect(peer)
   const manager = new ConnectionManager(channel, 'client')
@@ -64,11 +76,11 @@ async function startClient(port: number) {
   server.listen(port)
 }
 
-async function startServer(host: string, port: number) {
-  const offerSDP = await stdinReadSDP()
+async function acceptConnection(offerSDP: string, host: string, port: number, callback: (answerSDP: string) => void) {
   const peer = await createPeerConnection()
   const answerSDP = await createSDPAnswer(peer, offerSDP)
   showSDP(answerSDP)
+  callback(answerSDP)
   await waitPeerConnect(peer)
   peer.ondatachannel = ({ channel }) => {
     console.log('ondatachannel: ' + channel.label)
@@ -89,12 +101,31 @@ async function startServer(host: string, port: number) {
   }
 }
 
+async function startServer(serverName: string, host: string, port: number) {
+  while (true) {
+    console.log('waitingline')
+    await readLine()
+    const offerWithID = await readMailbox(serverName)
+    if (!offerWithID) {
+      console.log('no offer found')
+      continue
+    }
+    const id = offerWithID.substring(0, 8)
+    console.log('offer found', id)
+    const offerSDP = offerWithID.substring(8)
+    acceptConnection(offerSDP, host, port, answerSDP => {
+      showSDP(answerSDP)
+      sendMailbox(id, answerSDP)
+    })
+  }
+}
+
 async function start() {
   const mode = process.argv[2]
   if (mode == 'client') {
-    startClient(3000)
+    startClient(serverName, 3000)
   } else if (mode == 'server') {
-    startServer('localhost', 8080)
+    startServer(serverName, 'localhost', 8080)
   } else {
     console.log(`error: wrong mode ${mode}`)
   }
