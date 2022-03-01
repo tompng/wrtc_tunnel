@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "ts-node --files src/main.ts"
+    "server": "ts-node --files src/main.ts server",
+    "client": "ts-node --files src/main.ts client"
   },
   "dependencies": {
     "@mapbox/node-pre-gyp": "*",

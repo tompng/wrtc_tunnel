@@ -4,15 +4,7 @@ import { RTCPeerConnection, RTCSessionDescription } from 'wrtc'
 
 export async function createPeerConnection() {
   const peer = new RTCPeerConnection({ iceServers: [] })
-  peer.onicecandidateerror = e => console.log('error', e)
-  peer.ontrack = e => console.log('track', e)
-  peer.onicecandidate = e => console.log('icecandidate ' + !e.candidate)
-  peer.oniceconnectionstatechange = () => console.log('iceconnectionstate = ' + peer.iceConnectionState)
-  peer.onsignalingstatechange = () => console.log('signalingstate = ' + peer.signalingState)
-  peer.onconnectionstatechange = () => console.log('connectionstate = ' + peer.connectionState)
-  peer.ondatachannel = () => console.log('datachannel')
   peer.onicecandidateerror = e => console.log('icecandidate error', e)
-  peer.onnegotiationneeded = () => console.log('negotiationneeded')
   return peer
 }
 

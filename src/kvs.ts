@@ -22,23 +22,21 @@ async function request(url: string, data?: string) {
 }
 
 export const KVS = {
-  readURL: 'http://localhost:4567/read',
-  writeURL: 'http://localhost:4567/write',
+  baseURL: 'http://localhost:4567',
   async read(id: string) {
     try {
-      const url = `${this.readURL}/${id}`
+      const url = `${this.baseURL}/read/${id}`
       return await request(url)
     } catch(e) {
-      console.log(e)
+      return null
     }
   },
   async write(key: string, value: string) {
     try {
-      const url = `${this.writeURL}/${key}`
+      const url = `${this.baseURL}/write/${key}`
       await request(url, value)
       return true
     } catch(e) {
-      console.log(e)
       return false
     }
   }

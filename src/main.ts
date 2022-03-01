@@ -5,9 +5,7 @@ import * as net from 'net'
 import { SocketEx } from './tcp'
 import { KVS } from './kvs'
 
-function showSDP(sdp: string) {
-  console.log('\n\n===SDP_START===\n' + sdp + '\n===SDP_END===\n\n')
-}
+KVS.baseURL = 'http://localhost:4567'
 
 async function passC2S(connection: Connection, socket: SocketEx) {
   while (true) {
@@ -37,8 +35,6 @@ async function connect(connection: Connection, socket: SocketEx) {
   })
 }
 
-const serverName = 'server1'
-
 function randomID(n: number) {
   return [...new Array(n)].map(() => String.fromCharCode(Math.floor(97 + 26 * Math.random()))).join('')
 }
@@ -52,11 +48,11 @@ async function startClient(serverName: string, port: number) {
   const [channel, offerSDP] = await createSDPOffer(peer)
   const id = randomID(8)
   await KVS.write(serverName, id + offerSDP)
-  let answerSDP: string | undefined
+  let answerSDP: string | null = null
   for (let i = 0; i < 30; i++) {
     await sleep(1000)
-    console.log('...')
     answerSDP = await KVS.read(id)
+    console.log(answerSDP == null ? 'error' : '...')
     if (answerSDP) break
   }
   if (!answerSDP) {
@@ -65,6 +61,7 @@ async function startClient(serverName: string, port: number) {
   }
   acceptSDPAnswer(peer, answerSDP)
   await waitPeerConnect(peer)
+  console.log('connected')
   const manager = new ConnectionManager(channel, 'client')
   const server = net.createServer(async rawSocket => {
     const socket = new SocketEx(rawSocket)
@@ -79,11 +76,10 @@ async function startClient(serverName: string, port: number) {
 async function acceptConnection(offerSDP: string, host: string, port: number, callback: (answerSDP: string) => void) {
   const peer = await createPeerConnection()
   const answerSDP = await createSDPAnswer(peer, offerSDP)
-  showSDP(answerSDP)
   callback(answerSDP)
   await waitPeerConnect(peer)
+  console.log('connected')
   peer.ondatachannel = ({ channel }) => {
-    console.log('ondatachannel: ' + channel.label)
     const manager = new ConnectionManager(channel, 'server')
     manager.onaccept = connection => {
       console.log('accept')
@@ -102,32 +98,26 @@ async function acceptConnection(offerSDP: string, host: string, port: number, ca
 }
 
 async function startServer(serverName: string, host: string, port: number) {
+  console.log('Press ENTER to accept new connection.')
   while (true) {
-    console.log('waitingline')
     await readLine()
-    const offerWithID = await KVS.read(serverName)
+    let offerWithID: string | null = null
+    console.log('searching connection request')
+    for (let i = 0; i < 10; i++) {
+      offerWithID = await KVS.read(serverName)
+      console.log(offerWithID == null ? 'error' : '...')
+      if (offerWithID) break
+      await sleep(1000)
+    }
     if (!offerWithID) {
-      console.log('no offer found')
+      console.log('no connection request found')
       continue
     }
     const id = offerWithID.substring(0, 8)
-    console.log('offer found', id)
     const offerSDP = offerWithID.substring(8)
     acceptConnection(offerSDP, host, port, answerSDP => {
-      showSDP(answerSDP)
       KVS.write(id, answerSDP)
     })
-  }
-}
-
-async function start() {
-  const mode = process.argv[2]
-  if (mode == 'client') {
-    startClient(serverName, 3000)
-  } else if (mode == 'server') {
-    startServer(serverName, 'localhost', 8080)
-  } else {
-    console.log(`error: wrong mode ${mode}`)
   }
 }
 
@@ -136,4 +126,28 @@ process.on('uncaughtException', e => {
   console.log(e.stack)
 })
 
-start()
+function exitWithMessage(...messages: string[]) {
+  console.log(messages.join('\n'))
+  process.exit()
+}
+
+const baseClientCommand = 'npm run client ServerName LocalPort'
+const baseServerCommand = 'npm run server ServerName Host Port'
+const mode = process.argv[2]
+if (mode == 'client') {
+  const serverName = process.argv[3]
+  const localPort = parseInt(process.argv[4])
+  if (!serverName) exitWithMessage('ServerName missing', baseClientCommand)
+  if (!localPort) exitWithMessage('Wrong LocalPort', baseClientCommand)
+  startClient(serverName, localPort)
+} else if (mode == 'server') {
+  const serverName = process.argv[3]
+  const host = process.argv[4]
+  const port = parseInt(process.argv[5])
+  if (!serverName) exitWithMessage('ServerName missing', baseServerCommand)
+  if (!host) exitWithMessage('Wrong Host', baseServerCommand)
+  if (!port) exitWithMessage('Wrong Port', baseServerCommand)
+  startServer(serverName, host, port)
+} else {
+  console.log(`error: wrong mode ${mode}`)
+}
