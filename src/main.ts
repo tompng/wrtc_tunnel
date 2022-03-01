@@ -1,7 +1,8 @@
 import { createPeerConnection, createSDPOffer, createSDPAnswer, acceptSDPAnswer, waitPeerConnect } from './peer'
 import { readLine } from './stdin'
 import { ConnectionManager, Connection } from './connection'
-console.log('started')
+import * as net from 'net'
+import { SocketEx } from './tcp'
 
 function showSDP(sdp: string) {
   console.log('\n\n===SDP_START===\n' + sdp + '\n===SDP_END===\n\n')
@@ -17,21 +18,35 @@ async function stdinReadSDP() {
   return lines.join('\n')
 }
 
-function sendrecv(channel: RTCDataChannel) {
-  channel.onopen = () => console.log('datachannel open')
-  channel.onclose = () => console.log('datachannel close')
-  channel.onerror = () => console.log('datachannel error')
-  channel.onmessage = e => {
-    const data = e.data
-    console.log('message: ' + data)
+async function passC2S(connection: Connection, socket: SocketEx) {
+  while (true) {
+    const data = await connection.read()
+    await socket.write(data)
   }
-  setInterval(() => {
-    console.log('send ' + channel.bufferedAmount)
-    channel.send(new TextEncoder().encode('hello' + Math.random()))
-  }, 100)
+}
+async function passS2C(socket: SocketEx, connection: Connection) {
+  while (true) {
+    const data = await socket.read()
+    await connection.send(data)
+  }
 }
 
-async function startClient() {
+async function connect(connection: Connection, socket: SocketEx) {
+  return new Promise<void>(resolve => {
+    let closed = false
+    const closeAll = () => {
+      if (closed) return
+      connection.close()
+      socket.close()
+      closed = true
+      resolve()
+    }
+    passS2C(socket, connection).catch(closeAll)
+    passC2S(connection, socket).catch(closeAll)
+  })
+}
+
+async function startClient(port: number) {
   const peer = await createPeerConnection()
   const [channel, offerSDP] = await createSDPOffer(peer)
   showSDP(offerSDP)
@@ -39,25 +54,17 @@ async function startClient() {
   acceptSDPAnswer(peer, answerSDP)
   await waitPeerConnect(peer)
   const manager = new ConnectionManager(channel, 'client')
-  channel.onclose = channel.onerror = () => {
-    console.log('connection closed')
-    process.exit()
-  }
-  channel.onopen = () => {
-    console.log('datachannel open')
-    setInterval(() => {
-      console.log('connecting')
-      const conn = manager.connect()
-      const timer = setInterval(() => conn.sendString('from client ' + Math.random()), 1000)
-      conn.onclose = () => clearInterval(timer)
-      conn.ondata = data => {
-        console.log(conn.id + ': ' + new TextDecoder().decode(data))
-      }
-    }, 5000)
-  }
+  const server = net.createServer(async rawSocket => {
+    const socket = new SocketEx(rawSocket)
+    const connection = manager.connect()
+    console.log('open')
+    await connect(connection, socket)
+    console.log('closed')
+  })
+  server.listen(port)
 }
 
-async function startServer() {
+async function startServer(host: string, port: number) {
   const offerSDP = await stdinReadSDP()
   const peer = await createPeerConnection()
   const answerSDP = await createSDPAnswer(peer, offerSDP)
@@ -66,12 +73,18 @@ async function startServer() {
   peer.ondatachannel = ({ channel }) => {
     console.log('ondatachannel: ' + channel.label)
     const manager = new ConnectionManager(channel, 'server')
-    manager.onaccept = conn => {
-      const timer = setInterval(() => conn.sendString('from server ' + Math.random()), 1000)
-      conn.onclose = () => clearInterval(timer)
-      conn.ondata = data => {
-        console.log(conn.id + ': ' + new TextDecoder().decode(data))
-      }
+    manager.onaccept = connection => {
+      console.log('accept')
+      const rawSocket = net.connect(port, host)
+      rawSocket.on('connect', async () => {
+        const socket = new SocketEx(net.connect(port, host))
+        await connect(connection, socket)
+        console.log('closed')
+      })
+      rawSocket.on('error', () => {
+        console.log('error')
+        connection.close()
+      })
     }
   }
 }
@@ -79,12 +92,18 @@ async function startServer() {
 async function start() {
   const mode = process.argv[2]
   if (mode == 'client') {
-    startClient()
+    startClient(3000)
   } else if (mode == 'server') {
-    startServer()
+    startServer('localhost', 8080)
   } else {
     console.log(`error: wrong mode ${mode}`)
   }
 }
+
+process.on('uncaughtException', e => {
+  console.log('unhandled')
+  console.log(e)
+  console.log(e.stack)
+})
 
 start()
