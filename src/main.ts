@@ -132,7 +132,6 @@ async function start() {
 }
 
 process.on('uncaughtException', e => {
-  console.log('unhandled')
   console.log(e)
   console.log(e.stack)
 })

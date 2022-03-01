@@ -27,7 +27,7 @@ export const KVS = {
   async read(id: string) {
     try {
       const url = `${this.readURL}/${id}`
-      return request(url)
+      return await request(url)
     } catch(e) {
       console.log(e)
     }
