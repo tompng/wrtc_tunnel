@@ -3,16 +3,15 @@ require_relative './util'
 
 set :server, :puma
 
-timeout = 500
-mailbox = TimeoutHash.new timeout
+timeout = 30
+hash = TimeoutHash.new timeout
 
-post '/send/:to' do
-  id = params[:to].to_s
-  data = JSON.parse(request.body.read)['data']
-  p [id, data]
-  mailbox[id] = data unless id.empty? || data.empty?
+post '/write/:key' do
+  key = params[:key].to_s
+  data = request.body.read
+  hash[key] = data unless key.empty? || data.empty?
 end
 
-get '/read/:id' do
-  mailbox[params[:id]].to_s
+get '/read/:key' do
+  hash[params[:key]].to_s
 end

@@ -3,7 +3,7 @@ import { readLine } from './stdin'
 import { ConnectionManager, Connection } from './connection'
 import * as net from 'net'
 import { SocketEx } from './tcp'
-import { readMailbox, sendMailbox } from './mailbox'
+import { KVS } from './kvs'
 
 function showSDP(sdp: string) {
   console.log('\n\n===SDP_START===\n' + sdp + '\n===SDP_END===\n\n')
@@ -51,12 +51,12 @@ async function startClient(serverName: string, port: number) {
   const peer = await createPeerConnection()
   const [channel, offerSDP] = await createSDPOffer(peer)
   const id = randomID(8)
-  await sendMailbox(serverName, id + offerSDP)
+  await KVS.write(serverName, id + offerSDP)
   let answerSDP: string | undefined
   for (let i = 0; i < 30; i++) {
     await sleep(1000)
     console.log('...')
-    answerSDP = await readMailbox(id)
+    answerSDP = await KVS.read(id)
     if (answerSDP) break
   }
   if (!answerSDP) {
@@ -105,7 +105,7 @@ async function startServer(serverName: string, host: string, port: number) {
   while (true) {
     console.log('waitingline')
     await readLine()
-    const offerWithID = await readMailbox(serverName)
+    const offerWithID = await KVS.read(serverName)
     if (!offerWithID) {
       console.log('no offer found')
       continue
@@ -115,7 +115,7 @@ async function startServer(serverName: string, host: string, port: number) {
     const offerSDP = offerWithID.substring(8)
     acceptConnection(offerSDP, host, port, answerSDP => {
       showSDP(answerSDP)
-      sendMailbox(id, answerSDP)
+      KVS.write(id, answerSDP)
     })
   }
 }
