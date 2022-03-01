@@ -5,7 +5,7 @@ import * as net from 'net'
 import { SocketEx } from './tcp'
 import { KVS } from './kvs'
 
-KVS.baseURL = 'http://localhost:4567'
+KVS.baseURL = 'https://limitless-headland-26408.herokuapp.com'
 
 async function passC2S(connection: Connection, socket: SocketEx) {
   while (true) {
