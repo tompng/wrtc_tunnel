@@ -4,6 +4,7 @@ import { ConnectionManager, Connection } from './connection'
 import * as net from 'net'
 import { SocketEx } from './tcp'
 import { KVS } from './kvs'
+import { startUDPClient, serverHandleUDPChannel } from './udp'
 
 KVS.baseURL = 'https://limitless-headland-26408.herokuapp.com'
 
@@ -45,7 +46,7 @@ async function sleep(time: number) {
 
 async function startClient(serverName: string, port: number) {
   const peer = await createPeerConnection()
-  const [channel, offerSDP] = await createSDPOffer(peer)
+  const [tcpChannel, udpChannel, offerSDP] = await createSDPOffer(peer)
   const id = randomID(8)
   await KVS.write(serverName, id + offerSDP)
   let answerSDP: string | null = null
@@ -62,24 +63,24 @@ async function startClient(serverName: string, port: number) {
   acceptSDPAnswer(peer, answerSDP)
   await waitPeerConnect(peer)
   console.log('connected')
-  const manager = new ConnectionManager(channel, 'client')
-  const server = net.createServer(async rawSocket => {
+  const manager = new ConnectionManager(tcpChannel, 'client')
+  net.createServer(async rawSocket => {
     const socket = new SocketEx(rawSocket)
     const connection = manager.connect()
     console.log('open')
     await connect(connection, socket)
     console.log('closed')
-  })
-  server.listen(port)
+  }).listen(port)
+  startUDPClient(udpChannel, port)
 }
 
-async function acceptConnection(offerSDP: string, host: string, port: number, callback: (answerSDP: string) => void) {
+async function serverAcceptConnection(offerSDP: string, host: string, port: number, callback: (answerSDP: string) => void) {
   const peer = await createPeerConnection()
   const answerSDP = await createSDPAnswer(peer, offerSDP)
   callback(answerSDP)
   await waitPeerConnect(peer)
   console.log('connected')
-  peer.ondatachannel = ({ channel }) => {
+  function handleTCPChannel(channel: RTCDataChannel) {
     const manager = new ConnectionManager(channel, 'server')
     manager.onaccept = connection => {
       console.log('accept')
@@ -93,6 +94,13 @@ async function acceptConnection(offerSDP: string, host: string, port: number, ca
         console.log('error')
         connection.close()
       })
+    }
+  }
+  peer.ondatachannel = ({ channel }) => {
+    if (channel.label === 'tcp') handleTCPChannel(channel)
+    else if (channel.label === 'udp') {
+      const type = host.includes(':') ? 'udp6' : 'udp4'
+      serverHandleUDPChannel(channel, type, host, port)
     }
   }
 }
@@ -115,7 +123,7 @@ async function startServer(serverName: string, host: string, port: number) {
     }
     const id = offerWithID.substring(0, 8)
     const offerSDP = offerWithID.substring(8)
-    acceptConnection(offerSDP, host, port, answerSDP => {
+    serverAcceptConnection(offerSDP, host, port, answerSDP => {
       KVS.write(id, answerSDP)
     })
   }

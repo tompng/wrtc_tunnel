@@ -1,7 +1,5 @@
 import { RTCPeerConnection, RTCSessionDescription } from 'wrtc'
 
-// https://html5experts.jp/mganeko/19814/
-
 export async function createPeerConnection() {
   const peer = new RTCPeerConnection({ iceServers: [] })
   peer.onicecandidateerror = e => console.log('icecandidate error', e)
@@ -9,11 +7,12 @@ export async function createPeerConnection() {
 }
 
 export async function createSDPOffer(peer: RTCPeerConnection) {
-  const channel = peer.createDataChannel('data')
+  const tcpChannel = peer.createDataChannel('tcp')
+  const udpChannel = peer.createDataChannel('udp', { ordered: false, maxRetransmits: 0 })
   const offerDescription = await peer.createOffer()
   await peer.setLocalDescription(offerDescription)
   const localDescription = await waitPeerICEGather(peer)
-  return [channel, localDescription.sdp] as const
+  return [tcpChannel, udpChannel, localDescription.sdp] as const
 }
 
 export async function acceptSDPAnswer(peer: RTCPeerConnection, sdp: string) {

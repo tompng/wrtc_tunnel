@@ -113,9 +113,9 @@ export class ConnectionManager {
       this.connections.forEach(c => c.handleClose())
       this.connections.clear()
     }
-    this.channel.onmessage = e => {
-      if (!(e.data instanceof ArrayBuffer)) return
-      const message = new Uint8Array(e.data)
+    this.channel.onmessage = ({ data }) => {
+      if (!(data instanceof ArrayBuffer)) return
+      const message = new Uint8Array(data)
       const cmd = message[0]
       const connectionID = (message[1] << 16) | (message[2] << 8) | message[3]
       switch(cmd) {
