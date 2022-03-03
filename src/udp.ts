@@ -1,4 +1,5 @@
 import * as dgram from 'dgram'
+import type { WRTCDataChannel } from 'wrtc'
 import { TimeoutCache } from './cache'
 
 function packBuffer(id: number, data: Buffer) {
@@ -16,8 +17,8 @@ function unpackBuffer(data: Uint8Array) {
   return [id, data.slice(4)] as const
 }
 
-export function startUDPClient(channel: RTCDataChannel, port: number) {
-  const addr2id = new TimeoutCache<string, number>(10 * 60 * 1000, true)
+export function startUDPClient(channel: WRTCDataChannel, port: number) {
+  const addr2id = new TimeoutCache<string, number>(60 * 1000, true)
   const sockets = [
     dgram.createSocket('udp4').bind(port),
     dgram.createSocket('udp6').bind(port)
@@ -38,10 +39,12 @@ export function startUDPClient(channel: RTCDataChannel, port: number) {
     const [sid, host, port] = addr.split(' ')
     sockets[Number(sid)].send(buffer, Number(port), host)
   }
+  channel.onclosemanually = () => addr2id.terminate()
+  return sockets
 }
 
-export function serverHandleUDPChannel(channel: RTCDataChannel, socketType: dgram.SocketType, host: string, port: number) {
-  const id2socket = new TimeoutCache<number, dgram.Socket>(10 * 60 * 1000)
+export function serverHandleUDPChannel(channel: WRTCDataChannel, socketType: dgram.SocketType, host: string, port: number) {
+  const id2socket = new TimeoutCache<number, dgram.Socket>(60 * 1000)
   id2socket.ondelete = (_id, socket) => socket.close()
   function createSocket(id: number) {
     const socket = dgram.createSocket(socketType)
@@ -58,5 +61,5 @@ export function serverHandleUDPChannel(channel: RTCDataChannel, socketType: dgra
     if (!socket) id2socket.set(id, socket = createSocket(id))
     socket.send(buffer, port, host)
   }
-  channel.onclose = channel.onerror = () => id2socket.terminate()
+  channel.onclosemanually = () => id2socket.terminate()
 }

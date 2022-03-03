@@ -8,6 +8,7 @@ async function request(url: string, data?: string) {
       const chunks: string[] = []
       response.on('data', chunk => chunks.push(chunk))
       response.on('end', () => resolve(chunks.join('')))
+      response.on('error', reject)
     }
     if (data == null) {
       h.get(url, callback).on('error', reject)

@@ -1,6 +1,7 @@
 const CMD_OPEN = 0
 const CMD_CLOSE = 1
 const CMD_DATA = 2
+import type { WRTCDataChannel } from 'wrtc'
 export class Connection {
   onclose?: () => void
   ondata?: (data: Uint8Array) => void
@@ -48,7 +49,7 @@ export class ConnectionManager {
   connections = new Map<number, Connection>()
   onaccept?: (connection: Connection) => void
   bufferedAmountThreshold = 256 * 1024
-  constructor(public channel: RTCDataChannel, mode: 'server' | 'client') {
+  constructor(public channel: WRTCDataChannel, mode: 'server' | 'client') {
     this.isServer = mode === 'server'
     this.start()
   }
@@ -109,7 +110,7 @@ export class ConnectionManager {
     this.connections.delete(connectionID)
   }
   start() {
-    this.channel.onclose = () => {
+    this.channel.onclosemanually = () => {
       this.connections.forEach(c => c.handleClose())
       this.connections.clear()
     }

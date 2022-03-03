@@ -5,6 +5,7 @@ import * as net from 'net'
 import { SocketEx } from './tcp'
 import { KVS } from './kvs'
 import { startUDPClient, serverHandleUDPChannel } from './udp'
+import type { WRTCDataChannel } from 'wrtc'
 
 KVS.baseURL = 'https://limitless-headland-26408.herokuapp.com'
 
@@ -45,6 +46,17 @@ async function sleep(time: number) {
 }
 
 async function startClient(serverName: string, port: number) {
+  while (true) {
+    console.log(`Press ENTER to send connection request to server "${serverName}".`)
+    console.log('Be sure to contact the server owner to manually fetch new connection request within 30 seconds.')
+    await readLine('> ')
+    await startClientConnect(serverName, port)
+    await sleep(5000)
+  }
+}
+
+async function startClientConnect(serverName: string, port: number) {
+  console.log('preparing')
   const peer = await createPeerConnection()
   const [tcpChannel, udpChannel, offerSDP] = await createSDPOffer(peer)
   const id = randomID(8)
@@ -62,69 +74,104 @@ async function startClient(serverName: string, port: number) {
   }
   acceptSDPAnswer(peer, answerSDP)
   await waitPeerConnect(peer)
-  console.log('connected')
+  console.log(`${serverName}: connected`)
   const manager = new ConnectionManager(tcpChannel, 'client')
-  net.createServer(async rawSocket => {
+  let connCount = 0
+  const tcpServer = net.createServer(async rawSocket => {
+    let connId = connCount++
     const socket = new SocketEx(rawSocket)
     const connection = manager.connect()
-    console.log('open')
+    console.log(`${connId}:open`)
     await connect(connection, socket)
-    console.log('closed')
+    console.log(`${connId}:close`)
   }).listen(port)
-  startUDPClient(udpChannel, port)
+  const udpSockets = startUDPClient(udpChannel, port)
+  return new Promise<void>(resolve => {
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === 'disconnected') {
+        tcpChannel?.onclosemanually?.()
+        udpChannel?.onclosemanually?.()
+        console.log(`${serverName}: disconnected`)
+        tcpServer.close()
+        udpSockets.forEach(s => s.close())
+        resolve()
+      }
+    }
+  })
 }
 
+let peerCount = 0
 async function serverAcceptConnection(offerSDP: string, host: string, port: number, callback: (answerSDP: string) => void) {
   const peer = await createPeerConnection()
   const answerSDP = await createSDPAnswer(peer, offerSDP)
   callback(answerSDP)
   await waitPeerConnect(peer)
-  console.log('connected')
-  function handleTCPChannel(channel: RTCDataChannel) {
+  const peerName = `peer${peerCount++}`
+  console.log(`${peerName} connected`)
+  function handleTCPChannel(channel: WRTCDataChannel) {
     const manager = new ConnectionManager(channel, 'server')
+    let connCount = 0
     manager.onaccept = connection => {
-      console.log('accept')
+      const connId = connCount++
+      console.log(`${peerName}:${connId} open`)
       const rawSocket = net.connect(port, host)
       rawSocket.on('connect', async () => {
         const socket = new SocketEx(net.connect(port, host))
         await connect(connection, socket)
-        console.log('closed')
+        console.log(`${peerName}:${connId} close`)
       })
       rawSocket.on('error', () => {
-        console.log('error')
+        console.log('socket error')
         connection.close()
       })
     }
   }
+  let tcpChannel: WRTCDataChannel
+  let udpChannel: WRTCDataChannel
   peer.ondatachannel = ({ channel }) => {
-    if (channel.label === 'tcp') handleTCPChannel(channel)
-    else if (channel.label === 'udp') {
+    if (channel.label === 'tcp' && !tcpChannel) {
+      handleTCPChannel(tcpChannel = channel)
+    } else if (channel.label === 'udp' && !udpChannel) {
       const type = host.includes(':') ? 'udp6' : 'udp4'
-      serverHandleUDPChannel(channel, type, host, port)
+      serverHandleUDPChannel(udpChannel = channel, type, host, port)
+    }
+  }
+  peer.oniceconnectionstatechange = () => {
+    if (peer.iceConnectionState === 'disconnected') {
+      tcpChannel?.onclosemanually?.()
+      udpChannel?.onclosemanually?.()
+      console.log(`${peerName} disconnected`)
     }
   }
 }
 
 async function startServer(serverName: string, host: string, port: number) {
-  console.log('Press ENTER to accept new connection.')
+  console.log('Press ENTER to fetch new connection request.')
+  const acceptedIds = new Set<string>()
   while (true) {
     await readLine()
-    let offerWithID: string | null = null
+    let offerId = ''
+    let offerSDP = ''
     console.log('searching connection request')
     for (let i = 0; i < 10; i++) {
-      offerWithID = await KVS.read(serverName)
+      const offerWithID = await KVS.read(serverName)
       console.log(offerWithID == null ? 'error' : '...')
-      if (offerWithID) break
+      const id = offerWithID?.substring(0, 8)
+      const sdp = offerWithID?.substring(8)
+      if (id && sdp && !acceptedIds.has(id)) {
+        offerId = id
+        offerSDP = sdp
+        break
+      }
       await sleep(1000)
     }
-    if (!offerWithID) {
+    if (!offerId || !offerSDP) {
       console.log('no connection request found')
       continue
     }
-    const id = offerWithID.substring(0, 8)
-    const offerSDP = offerWithID.substring(8)
+    acceptedIds.add(offerId)
     serverAcceptConnection(offerSDP, host, port, answerSDP => {
-      KVS.write(id, answerSDP)
+      KVS.write(offerId, answerSDP)
     })
   }
 }
@@ -157,5 +204,6 @@ if (mode == 'client') {
   if (!port) exitWithMessage('Wrong Port', baseServerCommand)
   startServer(serverName, host, port)
 } else {
-  console.log(`error: wrong mode ${mode}`)
+  console.log(`Wrong mode "${mode}". should be "client" or "server"`)
+  process.exit()
 }
