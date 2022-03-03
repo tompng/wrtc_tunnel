@@ -19,10 +19,10 @@ function unpackBuffer(data: Uint8Array) {
 
 export function startUDPClient(channel: WRTCDataChannel, port: number) {
   const addr2id = new TimeoutCache<string, number>(60 * 1000, true)
-  const sockets = [
-    dgram.createSocket('udp4').bind(port),
-    dgram.createSocket('udp6').bind(port)
-  ]
+  const udp4 = dgram.createSocket('udp4').bind(port)
+  const udp6 = dgram.createSocket('udp6').bind(port)
+  const sockets = [udp4, udp6]
+  udp6.on('error', () => { /* ignore */ })
   sockets.forEach((socket, sid) => {
     socket.on('message', (data, { address, port }) => {
       const addr = [sid, address, port].join(' ')
